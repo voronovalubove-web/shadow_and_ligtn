@@ -1,7 +1,11 @@
+# pyrefly: ignore [missing-import]
 import pygame
 import config
+from pathlib import Path
 from sprites.player import Player
-from sprites.enviroment import Platform
+from sprites.enviroment import build_level_groups
+from ui import GameUI
+
 
 class GameEngine:
     def __init__(self, screen):
@@ -9,24 +13,19 @@ class GameEngine:
         self.player = None
         self.state = 'MENU'
         self.is_running = True
+        self.current_level = 0
+        self.unlocked_stories = []
 
         self.platforms = pygame.sprite.Group()
+        self.enemies = pygame.sprite.Group()
+        self.chests = pygame.sprite.Group()
+        self.savepoints = pygame.sprite.Group()        
+        self.ui = GameUI(screen)
         self._build_level()
 
-    def _build_level(self):
-        """Создаем тестовое окружение пещеры"""
-        self.platforms.empty()
-        
-        # Пол под ногами странника
-        floor = Platform(0, 550, config.SCREEN_WIDTH, 170, config.COLOR_GRAY)
-        # Тестовая стена/препятствие справа
-        wall = Platform(700, 350, 60, 200, config.COLOR_GRAY)
-        
-        self.platforms.add(floor, wall)
-        
 
     def handle_events(self):
-        '''Отвечает за обработку событий, таких как нажатия клавиш и закрытие окна'''
+        """Отвечает за обработку событий, таких как нажатия клавиш и закрытие окна"""
         events = pygame.event.get()
         for event in events:
             if event.type == pygame.QUIT:
@@ -34,101 +33,149 @@ class GameEngine:
                 return False
 
             if event.type == pygame.KEYDOWN:
-
                 if event.key == pygame.K_ESCAPE:
-                    if self.state in ['GAME', 'WIN_1']:
-                        self.state = 'MENU'
-                    elif self.state == 'MENU':
+                    if self.state in ["GAME", "WIN_1"]:
+                        self.state = "MENU"
+                    elif self.state == "DEAD":
+                        self.state = "MENU"
+                    elif self.state == "MENU":
                         self.is_running = False
                         return False
 
-                elif event.key == pygame.K_m and self.state in ['GAME', 'MAP']:
-                    if self.state == 'GAME':
-                        self.state = 'MAP'
-                    else:
-                        self.state = 'GAME'
+                elif event.key == pygame.K_m and self.state in ["GAME", "PLOT"]:
+                    self.state = "PLOT" if self.state == "GAME" else "GAME"
 
-                elif event.key == pygame.K_TAB and self.state in ['GAME', 'INVENTORY']:
-                    if self.state == 'GAME':
-                        self.state = 'INVENTORY'
-                    else:
-                        self.state = 'GAME'
+                elif event.key == pygame.K_TAB and self.state in ["GAME", "INVENTORY"]:
+                    self.state = "INVENTORY" if self.state == "GAME" else "GAME"
 
-                elif event.key == pygame.K_RETURN and self.state == 'MENU':
+                elif event.key == pygame.K_RETURN and self.state == "MENU":
+                    self.current_level = 0
                     self._build_level()
-                    self.player = Player(150, 400)
-                    self.state = 'GAME'
+                    self.player = Player(*self.player_spawn)
+                    self.checkpoint = self.player_spawn
+                    self.state = "GAME"
 
-        if self.state == 'GAME':
-            self.player.handle_imput()
+                elif event.key == pygame.K_RETURN and self.state == "DEAD":
+                    self._build_level()
+                    self.player = None
+                    self.state = "MENU"
+
+                elif event.key == pygame.K_z and self.state == "GAME" and self.player:
+                    self.player.activate_red_light()
+
+                elif event.key == pygame.K_x and self.state == "GAME" and self.player:
+                    self.player.activate_green_light()
+
+                elif event.key == pygame.K_e and self.state == "GAME" and self.player:
+                    self.player.attack(self.enemies)
+
+                elif event.key == pygame.K_f and self.state == "GAME" and self.player:
+                    self._try_open_chest()
+
+                elif event.key == pygame.K_r and self.state == "GAME" and self.player:
+                    self._try_activate_savepoint()
+
+        if self.state == "GAME" and self.player:
+            self.player.handle_imput(events)
+            self.enemies = pygame.sprite.Group(*[enemy for enemy in self.enemies if enemy.is_alive])
+            self.chests = pygame.sprite.Group(*[chest for chest in self.chests if not chest.opened])
 
             if self.player.rect.x < 0:
-                self.state = 'WIN_1'
+                if self.current_level == 1:
+                    self.state = "WIN_1"
+                else:
+                    self.player.rect.x = 0
+            elif self.player.rect.x > config.SCREEN_WIDTH:
+                if self.current_level == 0:
+                    self.current_level = 1
+                    self._build_level()
+                    self.player.rect.topleft = (10, 300)
+                    self.player.velocity_x = 0
+                    self.player.velocity_y = 0
+                    self.checkpoint = (10, 300)
+                elif self.current_level == 1:
+                    self.current_level = 2
+                    self._build_level()
+                    self.player.rect.topleft = (10, 300)
+                    self.player.velocity_x = 0
+                    self.player.velocity_y = 0
+                    self.checkpoint = (10, 300)
+                elif self.current_level == 2:
+                    self.player.rect.right = config.SCREEN_WIDTH
+
+            if self.player.hp <= 0:
+                self._respawn_at_checkpoint()
 
         return True
-    
+
+
+    def _try_open_chest(self):
+        if not self.player:
+            return
+
+        for chest in self.chests:
+            if not self.player.rect.colliderect(chest.rect):
+                continue
+
+            reward = chest.open()
+            if reward is None:
+                continue
+
+            self.player.inventory.append(reward["spell_name"])
+            self.player.mana = min(config.MAX_MANA, self.player.mana + reward["mana_restore"])
+            break
+
+
+    def _try_activate_savepoint(self):
+        if not self.player:
+            return
+
+        for savepoint in self.savepoints:
+            if not self.player.rect.colliderect(savepoint.rect):
+                continue
+
+            reward = savepoint.activate()
+            if reward and "story_text" in reward:
+                if reward["story_text"] not in self.unlocked_stories:
+                    self.unlocked_stories.append(reward["story_text"])
+            self.checkpoint = (savepoint.rect.left - 20, savepoint.rect.top - 10)
+            self.player.hp = config.MAX_HP
+            self.player.mana = config.MAX_MANA
+            self.player.light.recharge_base()
+            break
+
+
+    def _respawn_at_checkpoint(self):
+        if not self.player:
+            return
+
+        respawn_x, respawn_y = self.checkpoint
+        self.player.rect.topleft = (respawn_x, respawn_y)
+        self.player.velocity_x = 0
+        self.player.velocity_y = 0
+        self.player.hp = config.MAX_HP
+        self.player.mana = config.MAX_MANA
+        self.player.light.recharge_base()
+
+
+    def _build_level(self):
+        """Создаем окружение пещеры"""
+        level_path = Path(__file__).resolve().parent / ".." / "levels" / f"level{self.current_level}.txt"
+        self.platforms, self.enemies, self.chests, self.savepoints, self.player_spawn = build_level_groups(level_path)
+
 
     def update(self, dt):
-        if self.state == 'GAME' and self.player:
+        if self.state == "GAME" and self.player:
             self.player.update_logic(dt, self.platforms)
-        elif self.state in ['MAP', 'INVENTORY']:
-            pass  #  логика обновления карты
+            self.enemies.update(dt)
 
+            for enemy in self.enemies:
+                if not self.player.rect.colliderect(enemy.rect):
+                    continue
+
+                if enemy.can_touch_damage():
+                    self.player.take_damage(config.ENEMY_TOUCH_DAMAGE)
+                    enemy.reset_touch_damage_timer()
 
     def render(self):
-        '''отрисовка текущего состояния игры на экране'''
-        self.screen.fill(config.COLOR_BLACK)
-        
-        if self.state == "MENU":
-            self._render_menu()
-        elif self.state == "GAME":
-            self._render_game()
-        elif self.state == "MAP":
-            self._render_map()
-        elif self.state == "INVENTORY":
-            self._render_inventory()
-        elif self.state == "WIN_1":
-            self._render_win_1()
-            
-        pygame.display.flip()
-    
-
-    def _render_menu(self):
-        font = pygame.font.Font(None, 48)
-        text = font.render("ТЕНЬ И СВЕТ: НАЖМИТЕ ENTER ДЛЯ СТАРТА", True, config.COLOR_AMBER)
-        rect = text.get_rect(center=(config.SCREEN_WIDTH // 2, config.SCREEN_HEIGHT // 2))
-        self.screen.blit(text, rect)
-
-    def _render_game(self):
-        self.platforms.draw(self.screen)
-        
-        if self.player:
-            self.screen.blit(self.player.image, self.player.rect)
-        
-        font = pygame.font.Font(None, 24)
-        text = font.render("ИГРА (Платформы и хитбоксы активны. Препятствие на X=700)", True, config.COLOR_WHITE)
-        self.screen.blit(text, (20, 20))
-
-    def _render_map(self):
-        font = pygame.font.Font(None, 48)
-        text = font.render("ЭКРАН КАРТЫ. НАЖМИТЕ M ДЛЯ ВЫХОДА", True, config.COLOR_BLUE)
-        rect = text.get_rect(center=(config.SCREEN_WIDTH // 2, config.SCREEN_HEIGHT // 2))
-        self.screen.blit(text, rect)
-
-    def _render_inventory(self):
-        font_title = pygame.font.Font(None, 48)
-        font_item = pygame.font.Font(None, 36)
-        title_text = font_title.render("СВИТКИ ЗАКЛИНАНИЙ (Tab - Выход):", True, config.COLOR_GREEN)
-        self.screen.blit(title_text, (50, 50))
-
-        if self.player:
-            start_y = 150
-            for i, item in enumerate(self.player.inventory):
-                item_text = font_item.render(f"{i + 1}. {item}", True, config.COLOR_WHITE)
-                self.screen.blit(item_text, (80, start_y + (i * 50)))
-
-    def _render_win_1(self):
-        font = pygame.font.Font(None, 48)
-        text = font.render("КОНЦОВКА №1: СТРАННИК УШЕЛ ДОМОЙ", True, config.COLOR_GREEN)
-        rect = text.get_rect(center=(config.SCREEN_WIDTH // 2, config.SCREEN_HEIGHT // 2))
-        self.screen.blit(text, rect)
+        self.ui.render(self)

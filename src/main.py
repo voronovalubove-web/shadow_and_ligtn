@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 import pygame
 import config
 from engine import GameEngine
