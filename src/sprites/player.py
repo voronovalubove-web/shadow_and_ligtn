@@ -1,5 +1,3 @@
-#движение, инвентарь, мана, здоровье
-# pyrefly: ignore [missing-import]
 import pygame
 import config
 from sprites.light import LightController
@@ -22,28 +20,29 @@ class Player(pygame.sprite.Sprite):
         self.hp = config.MAX_HP
         self.mana = config.MAX_MANA
         self.light = LightController()
+        self.boss_notification_timer = 0.0
 
         self.inventory = [
             "Подстричь ногти",
-            "Атаковать",
-            "Защититься"
+            "Атаковать(Z)",
+            "Защититься(X)"
         ]
     
-    def handle_imput(self, events=None):
-        keys = pygame.key.get_pressed()
-        self.velocity_x = 0
-        if keys[pygame.K_a]:
-            self.velocity_x = -self.move_speed
-            self.facing_right = False
-        if keys[pygame.K_d]:
-            self.velocity_x = self.move_speed
-            self.facing_right = True
+    def move_left(self):
+        self.velocity_x = -self.move_speed
+        self.facing_right = False
 
-        if events:
-            for event in events:
-                if event.type == pygame.KEYDOWN and event.key in (pygame.K_w, pygame.K_SPACE) and self.on_ground:
-                    self.velocity_y = -config.PLAYER_JUMP_POWER
-                    self.on_ground = False
+    def move_right(self):
+        self.velocity_x = self.move_speed
+        self.facing_right = True
+
+    def stop_horizontal(self):
+        self.velocity_x = 0
+
+    def jump(self):
+        if self.on_ground:
+            self.velocity_y = -config.PLAYER_JUMP_POWER
+            self.on_ground = False
 
     def activate_red_light(self):
         self.mana, activated = self.light.activate_red(self.mana)
@@ -53,8 +52,8 @@ class Player(pygame.sprite.Sprite):
         self.mana, activated = self.light.activate_green(self.mana)
         return activated
 
-    def take_damage(self, amount):
-        if self.light.block_environment_damage:
+    def take_damage(self, amount, is_enemy=False):
+        if self.light.block_environment_damage and not is_enemy:
             return 0
 
         reduced_amount = int(round(amount * self.light.defense_damage_multiplier))
@@ -79,8 +78,13 @@ class Player(pygame.sprite.Sprite):
 
         return hit_enemy
     
+    def show_boss_notification(self, duration=1.5):
+        self.boss_notification_timer = duration
+
     def update_logic(self, dt, platforms):
         self.light.update(dt)
+        if hasattr(self, 'boss_notification_timer') and self.boss_notification_timer > 0:
+            self.boss_notification_timer = max(0.0, self.boss_notification_timer - dt)
         
         self.on_ground = False
         self.velocity_y += config.GRAVITY

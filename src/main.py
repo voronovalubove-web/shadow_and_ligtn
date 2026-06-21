@@ -1,7 +1,7 @@
 # pyrefly: ignore [missing-import]
 import pygame
 import config
-from engine import GameEngine
+from controller import GameController
 
 
 def main():
@@ -10,19 +10,19 @@ def main():
     screen = pygame.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
     pygame.display.set_caption("Shadow and Light")
     clock = pygame.time.Clock()
-    engine = GameEngine(screen)
+    controller = GameController(screen)
 
 
     running = True
     while running:
         dt = clock.tick(config.FPS) / 1000.0
-        running = engine.handle_events()
+        running = controller.handle_events()
 
         if not running:
             break
 
-        engine.update(dt)
-        engine.render()
+        controller.update(dt)
+        controller.render()
     
     pygame.quit()
 

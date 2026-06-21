@@ -1,9 +1,7 @@
-#платформы, базы, шипы, сундуки и пр.
-# pyrefly: ignore [missing-import]
 import pygame
 import config
 from pathlib import Path
-from sprites.enemies import BaseEnemy
+from sprites.enemies import BaseEnemy, BossEnemy
 
 
 
@@ -17,15 +15,6 @@ class Platform(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(topleft=(x, y))
 
 
-def _load_level_grid(level_path=LEVEL_FILE):
-    with open(level_path, "r", encoding="utf-8") as level_file:
-        return [line.rstrip("\n") for line in level_file if line.strip()]
-
-
-def _tile_rect(column, row):
-    return pygame.Rect(column * config.LEVEL_SIZE , row * config.LEVEL_SIZE , config.LEVEL_SIZE , config.LEVEL_SIZE )
-
-
 class Chest(pygame.sprite.Sprite):
     def __init__(self, x, y, spell_name, mana_restore):
         super().__init__()
@@ -36,6 +25,7 @@ class Chest(pygame.sprite.Sprite):
         self.spell_name = spell_name
         self.mana_restore = mana_restore
         self.opened = False
+
 
     def open(self):
         if self.opened:
@@ -61,6 +51,7 @@ class SavePoint(pygame.sprite.Sprite):
         self.story_text = story_text
         self.activated = False
 
+
     def activate(self):
         self.activated = True
         self.image.fill(config.COLOR_GREEN)
@@ -71,8 +62,20 @@ class SavePoint(pygame.sprite.Sprite):
         }
 
 
+def load_level_grid(level_path=LEVEL_FILE):
+    '''считывает текстовый файл карты уровня и превращает его в двумерную сетку'''
+    with open(level_path, "r", encoding="utf-8") as level_file:
+        return [line.rstrip("\n") for line in level_file if line.strip()]
+
+
+def _tile_rect(column, row):
+    '''переводит координаты ячейки в текстовой сетке уровня (строку и колонку) в реальные пиксельные координаты на экране '''
+    return pygame.Rect(column * config.LEVEL_SIZE , row * config.LEVEL_SIZE , config.LEVEL_SIZE , config.LEVEL_SIZE )
+
+
 def build_level_objects(level_path=LEVEL_FILE):
-    grid = _load_level_grid(level_path)
+    '''создает все игровые объекты уровня (платформы, врагов, сундуки, точки сохранения) на основе сетки'''
+    grid = load_level_grid(level_path)
     platforms = []
     enemies = []
     chests = []
@@ -95,30 +98,36 @@ def build_level_objects(level_path=LEVEL_FILE):
                 platforms.append(Platform(tile_rect.x, tile_rect.y, tile_rect.width, tile_rect.height, config.COLOR_GRAY))
             elif cell == "P":
                 player_spawn = (tile_rect.x, tile_rect.y - 40)
-            elif cell.lower() == "c":
+            elif cell == "C":
                 cx = tile_rect.x + (config.LEVEL_SIZE - 32) // 2
                 cy = tile_rect.y + config.LEVEL_SIZE - 24
                 chest_idx = level_idx + len(chests)
                 spell_name, mana_restore = config.FUNNY_SPELLS[chest_idx]
                 chests.append(Chest(cx, cy, spell_name, mana_restore))
                 has_custom_objects = True
-            elif cell.lower() == "f":
+            elif cell == "F":
                 sx = tile_rect.x + (config.LEVEL_SIZE - 36) // 2
                 sy = tile_rect.y + config.LEVEL_SIZE - 48
                 sp_idx = level_idx + len(savepoints)
                 story_text = config.STORY_TEXTS[sp_idx]
                 savepoints.append(SavePoint(sx, sy, story_text))
                 has_custom_objects = True
-            elif cell.lower() == "e":
+            elif cell == "E":
                 ex = tile_rect.x + (config.LEVEL_SIZE - 40) // 2
                 ey = tile_rect.y + config.LEVEL_SIZE - 50
                 enemies.append(BaseEnemy(ex, ey))
+                has_custom_objects = True
+            elif cell == "B":
+                bx = tile_rect.x + (config.LEVEL_SIZE - 50) // 2
+                by = tile_rect.y + config.LEVEL_SIZE - 60
+                enemies.append(BossEnemy(bx, by))
                 has_custom_objects = True
 
     return platforms, enemies, chests, savepoints, player_spawn
 
 
 def build_level_groups(level_path=LEVEL_FILE):
+    '''создает группы спрайтов из объектов уровня'''
     platforms, enemies, chests, savepoints, player_spawn = build_level_objects(level_path)
 
     platform_group = pygame.sprite.Group(*platforms)
