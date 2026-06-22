@@ -10,7 +10,6 @@ class LightController:
 		self.active_color = config.COLOR_AMBER
 		self.attack_damage_bonus = 1.0
 		self.defense_damage_multiplier = 1.0
-		self.block_environment_damage = False
 
 	@property
 	def base_ratio(self):
@@ -39,7 +38,6 @@ class LightController:
 		self.active_color = config.COLOR_AMBER
 		self.attack_damage_bonus = 1.0
 		self.defense_damage_multiplier = 1.0
-		self.block_environment_damage = False
 
 	def activate_red(self, mana):
 		'''активирует красный свет'''
@@ -51,7 +49,6 @@ class LightController:
 		self.active_color = config.COLOR_RED
 		self.attack_damage_bonus = config.BUFF_DAMAGE
 		self.defense_damage_multiplier = 1.0
-		self.block_environment_damage = False
 		return mana - config.MANA_COST_SPELL, True
 
 	def activate_green(self, mana):
@@ -64,7 +61,6 @@ class LightController:
 		self.active_color = config.COLOR_GREEN
 		self.attack_damage_bonus = 1.0
 		self.defense_damage_multiplier = config.BUFF_DEFENSE
-		self.block_environment_damage = True
 		return mana - config.MANA_COST_SPELL, True
 
 	def update(self, dt):
@@ -79,7 +75,6 @@ class LightController:
 				self.active_color = config.COLOR_BLACK if self.active_mode == "dark" else config.COLOR_AMBER
 				self.attack_damage_bonus = 1.0
 				self.defense_damage_multiplier = 1.0
-				self.block_environment_damage = False
 		elif self.base_timer <= 0:
 			self.active_mode = "dark"
 			self.active_color = config.COLOR_BLACK

@@ -22,11 +22,7 @@ class Player(pygame.sprite.Sprite):
         self.light = LightController()
         self.boss_notification_timer = 0.0
 
-        self.inventory = [
-            "Подстричь ногти",
-            "Атаковать(Z)",
-            "Защититься(X)"
-        ]
+        self.inventory = config.BASE_INVENTORY
     
     def move_left(self):
         self.velocity_x = -self.move_speed
@@ -52,10 +48,8 @@ class Player(pygame.sprite.Sprite):
         self.mana, activated = self.light.activate_green(self.mana)
         return activated
 
-    def take_damage(self, amount, is_enemy=False):
-        if self.light.block_environment_damage and not is_enemy:
-            return 0
-
+    def take_damage(self, amount):
+        '''получение урона'''
         reduced_amount = int(round(amount * self.light.defense_damage_multiplier))
         reduced_amount = max(0, reduced_amount)
         self.hp = max(0, self.hp - reduced_amount)

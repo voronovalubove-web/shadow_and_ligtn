@@ -131,5 +131,5 @@ class GameModel:
                     if random.random() < config.ENEMY_CRIT_CHANCE:
                         base_damage = int(round(base_damage * config.ENEMY_CRIT_MULTIPLIER))
                         
-                    self.player.take_damage(base_damage, is_enemy=True)
+                    self.player.take_damage(base_damage)
                     enemy.reset_touch_damage_timer()
